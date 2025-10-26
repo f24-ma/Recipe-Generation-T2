@@ -37,20 +37,33 @@ if st.button("Generate Recipe"):
     if not text.strip():
         st.warning("Please enter something first.")
     else:
-        prompt = (
-            f"Write a clear, realistic cooking recipe for {text}. "
-            f"Include:\nIngredients list and numbered Instructions. Avoid repetition."
-        )
+        # Stronger structured prompt
+        prompt = f"""
+You are an expert chef AI that writes professional, realistic recipes.
+
+Write a complete, clear, and human-like recipe for {text}.
+Follow this structure exactly:
+
+Recipe Name: {text}
+
+Ingredients:
+- (list of ingredients)
+
+Instructions:
+1. (step-by-step instructions)
+
+Ensure the recipe is realistic, avoids repetition, and does not add unrelated commentary.
+        """
 
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=200,
+                max_new_tokens=250,
                 temperature=0.8,
                 top_p=0.9,
                 repetition_penalty=3.0,
-                no_repeat_ngram_size=5,
+                no_repeat_ngram_size=6,
                 do_sample=True,
                 early_stopping=True,
                 pad_token_id=tokenizer.eos_token_id
@@ -58,7 +71,8 @@ if st.button("Generate Recipe"):
 
         recipe = tokenizer.decode(outputs[0], skip_special_tokens=True)
         recipe = recipe.replace(prompt, "").strip()
-        recipe = clean_text(recipe)
+
+        # Cleaning and formatting
         recipe = recipe.replace("Ingredients", "\n\nIngredients").replace("Instructions", "\n\nInstructions")
 
         st.subheader("Generated Recipe:")
