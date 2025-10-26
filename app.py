@@ -1,22 +1,17 @@
 import streamlit as st
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 # -------------------------------------------------------------
-# Load Model (Public, works without authentication)
+# Use a public recipe-trained model (no login required)
 # -------------------------------------------------------------
-MODEL_PATH = "distilgpt2"  #  Public model that runs on Streamlit Cloud
+MODEL_PATH = "flax-community/t5-recipe-generation"  # Public model
 
 @st.cache_resource
 def load_model():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-    model = AutoModelForCausalLM.from_pretrained(MODEL_PATH)
-    
-    # Set padding token
-    tokenizer.pad_token = tokenizer.eos_token
-    model.config.pad_token_id = tokenizer.eos_token_id
+    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_PATH)
 
-    # Move to device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     return tokenizer, model, device
@@ -24,54 +19,42 @@ def load_model():
 tokenizer, model, device = load_model()
 
 # -------------------------------------------------------------
-# Clean text output
+# Clean and format the generated text
 # -------------------------------------------------------------
 def clean_text(text):
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    cleaned, seen = [], set()
-    for line in lines:
-        low = line.lower()
-        if low not in seen and len(line.split()) > 2:
-            if not line.endswith(":") and not line.startswith("Recipe:"):
-                cleaned.append(line)
-                seen.add(low)
-    return "\n".join(cleaned)
+    text = text.strip()
+    text = text.replace("Ingredients:", "\n\n**Ingredients:**\n")
+    text = text.replace("instructions:", "\n\n**Instructions:**\n")
+    text = text.replace("Directions:", "\n\n**Instructions:**\n")
+    return text.strip()
 
 # -------------------------------------------------------------
-# Streamlit Interface
+# Streamlit interface
 # -------------------------------------------------------------
 st.title(" Recipe Generator")
-st.write("Enter a dish name or list of ingredients to generate a clear and realistic recipe.")
+st.write("Enter a dish name or ingredients and get a professional, realistic recipe!")
 
-text = st.text_area("Enter dish or ingredients (e.g. 'pizza', 'eggs, flour, milk'): ")
+text = st.text_area("Enter dish or ingredients (e.g. 'chocolate cake', 'chicken, garlic, onion'):")
 
 if st.button("Generate Recipe"):
     if not text.strip():
-        st.warning(" Please enter something first.")
+        st.warning(" Please enter a dish name or ingredients first.")
     else:
-        prompt = (
-            f"Write a detailed, clear, and realistic cooking recipe for {text}. "
-            f"Include sections for:\nIngredients:\n- (list items)\n\nInstructions:\n1. (numbered steps)\n"
-            f"Keep it professional, readable, and non-repetitive."
-        )
+        with st.spinner("Generating recipe... Please wait "):
+            prompt = f"generate recipe: {text}"
 
-        inputs = tokenizer(prompt, return_tensors="pt").to(device)
-        with torch.no_grad():
+            inputs = tokenizer(prompt, return_tensors="pt").to(device)
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=220,
+                max_new_tokens=300,
                 temperature=0.8,
                 top_p=0.9,
-                repetition_penalty=2.5,
-                no_repeat_ngram_size=5,
                 do_sample=True,
-                pad_token_id=tokenizer.eos_token_id
+                repetition_penalty=1.8
             )
 
-        recipe = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        recipe = recipe.replace(prompt, "").strip()
-        recipe = clean_text(recipe)
-        recipe = recipe.replace("Ingredients", "\n\nIngredients").replace("Instructions", "\n\nInstructions")
+            recipe = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            recipe = clean_text(recipe)
 
-        st.subheader("Generated Recipe:")
-        st.text(recipe)
+        st.success("Recipe generated successfully!")
+        st.markdown(recipe)
