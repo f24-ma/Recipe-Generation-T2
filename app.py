@@ -34,7 +34,7 @@ def clean_text(text):
 st.title(" Recipe Generator")
 st.write("Enter a dish name or ingredients and get a professional, realistic recipe!")
 
-text = st.text_area("Enter dish or ingredients (e.g. 'chocolate cake', 'chicken, garlic, onion'):")
+text = st.text_area("Enter dish or ingredients:")
 
 if st.button("Generate Recipe"):
     if not text.strip():
