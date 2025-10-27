@@ -1,60 +1,46 @@
 import streamlit as st
 import torch
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# -------------------------------------------------------------
-# Use a public recipe-trained model (no login required)
-# -------------------------------------------------------------
-MODEL_PATH = "flax-community/t5-recipe-generation"  # Public model
+# Path to your fine-tuned model
+MODEL_PATH = "models/gpt2_recipe"  # or "your-username/gpt2-recipe-gen"
 
 @st.cache_resource
-def load_model():
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_PATH)
-
+def load_model(path):
+    tokenizer = AutoTokenizer.from_pretrained(path)
+    model = AutoModelForCausalLM.from_pretrained(path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
+    model.eval()
     return tokenizer, model, device
 
-tokenizer, model, device = load_model()
+tokenizer, model, device = load_model(MODEL_PATH)
 
-# -------------------------------------------------------------
-# Clean and format the generated text
-# -------------------------------------------------------------
-def clean_text(text):
-    text = text.strip()
-    text = text.replace("Ingredients:", "\n\n**Ingredients:**\n")
-    text = text.replace("instructions:", "\n\n**Instructions:**\n")
-    text = text.replace("Directions:", "\n\n**Instructions:**\n")
-    return text.strip()
+st.set_page_config(page_title="Recipe Generator App")
+st.title("Recipe Generator")
+st.write("Generate a full recipe given a dish name or a list of ingredients using your fine-tuned GPT-2 model.")
 
-# -------------------------------------------------------------
-# Streamlit interface
-# -------------------------------------------------------------
-st.title(" Recipe Generator")
-st.write("Enter a dish name or ingredients and get a professional, realistic recipe!")
-
-text = st.text_area("Enter dish or ingredients:")
+prompt = st.text_area("Enter a dish name or ingredients:")
 
 if st.button("Generate Recipe"):
-    if not text.strip():
-        st.warning(" Please enter a dish name or ingredients first.")
+    if not prompt.strip():
+        st.warning("Please enter a dish name or ingredients.")
     else:
-        with st.spinner("Generating recipe... Please wait "):
-            prompt = f"generate recipe: {text}"
-
-            inputs = tokenizer(prompt, return_tensors="pt").to(device)
+        input_text = f"Title: {prompt}\nIngredients:"
+        inputs = tokenizer(input_text, return_tensors="pt").to(device)
+        with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=300,
+                max_length=250,
                 temperature=0.8,
                 top_p=0.9,
+                repetition_penalty=1.2,
                 do_sample=True,
-                repetition_penalty=1.8
+                pad_token_id=tokenizer.eos_token_id
             )
+        generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        st.subheader("Generated Recipe")
+        st.text_area("Output:", generated, height=300)
 
-            recipe = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            recipe = clean_text(recipe)
-
-        st.success("Recipe generated successfully!")
-        st.markdown(recipe)
+st.markdown("---")
+st.caption("Fine-tuned GPT-2 model for recipe generation — 24F-7812")
